@@ -7,7 +7,6 @@ import time
 import pymysql
 import datetime
 
-
 def buslist_file_load():
     f = open("buslist.txt", 'rt',encoding='UTF8')
     line = f.read().splitlines()
