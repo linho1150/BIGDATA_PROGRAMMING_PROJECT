@@ -38,11 +38,11 @@ async def busdetail(busRouteId):
 async def save_log(log,busnumber,ex):
     now = datetime.datetime.now()
     now_time = now.strftime("%y%m%d%H%M%S")
-    file1 = open("ERROR_LOG.txt", "w")
+    file1 = open("ERROR_LOG.txt", "a")
     file1.write("[" + str(now_time) + "]" +log+"\n"+ str(busnumber) + "정보를 DATABASE에 데이터를 저장하지 못하였습니다.\n" + str(ex) + "\n")
     file1.close()
 
-async def main(totalbuslist,index):
+async def main(totalbuslist,index,conn):
         try:
             for busnumber in totalbuslist:
                 busnum=[busdetail(await busnumberToid(busnumber))]
@@ -51,21 +51,19 @@ async def main(totalbuslist,index):
                     for stationnm, exist in bus:
                         str_exist=str(exist).strip().replace(" ","")
                         str_stationnm=str(stationnm).strip().replace(" ","")
-                        str_before_exist = await mysql_search_data(busnumber, str_stationnm)
+                        str_before_exist =  await mysql_search_data(busnumber, str_stationnm,conn)
                         if str_exist != str_before_exist or index==0:
-                            await mysql_insert_data(busnumber, str_stationnm, str_exist,index)
+                            await mysql_insert_data(busnumber, str_stationnm, str_exist,index,conn)
                 print("confirm : ",str(index))
         except Exception as ex:
             await save_log("function main",busnumber,ex)
             print("main",ex);
             pass
 
-async def mysql_insert_data(busnumber,stationnumber,exist,index):
+async def mysql_insert_data(busnumber,stationnumber,exist,index,conn):
     try:
-        conn = pymysql.connect(host='bus-live.canb61sq58tb.ap-northeast-2.rds.amazonaws.com', user='admin', password='wowns0034', db='bus-live', charset='utf8')
-
         #시간시작----------------------------------------------------
-        str_before_time = await mysql_get_time_data(busnumber, stationnumber)
+        str_before_time = await mysql_get_time_data(busnumber, stationnumber,conn)
         try:
             now = datetime.datetime.now()
             now_time = now.strftime("%y-%m-%d %H:%M:%S")
@@ -81,7 +79,6 @@ async def mysql_insert_data(busnumber,stationnumber,exist,index):
         curs.execute(sql, (index, busnumber, stationnumber, now_time, exist, wtime))
         conn.commit()
         print(index," ",busnumber,",",stationnumber,"find")
-        conn.close()
         # MYSQL insert----------------------------------------------
 
     except Exception as ex:
@@ -89,36 +86,32 @@ async def mysql_insert_data(busnumber,stationnumber,exist,index):
         print("mysql_insert_data ", ex);
         pass
 
-async def mysql_get_time_data(busnumber,stationnumber):
+async def mysql_get_time_data(busnumber,stationnumber,conn):
     try:
-        conn = pymysql.connect(host='bus-live.canb61sq58tb.ap-northeast-2.rds.amazonaws.com', user='admin', password='wowns0034', db='bus-live', charset='utf8')
         curs = conn.cursor()
-        sql = """SELECT B.TIME FROM (SELECT MAX(INDEX_NUM) AS MAX_NUM FROM BUS_LIVE WHERE BUS_ID=%s AND STATION_ID=%s AND BUS_IS='Y') AS A, BUS_LIVE AS B WHERE BUS_ID=%s AND STATION_ID=%s AND B.INDEX_NUM=A.MAX_NUM"""
-        curs.execute(sql, (busnumber,stationnumber,busnumber,stationnumber))
+        sql = """SELECT TIME FROM BUS_LIVE WHERE BUS_ID=%s AND STATION_ID=%s AND BUS_IS='Y' ORDER BY INDEX_NUM DESC LIMIT 1"""
+        curs.execute(sql, (busnumber,stationnumber))
         result = curs.fetchall()
         if len(result) == 0:
             return datetime.datetime.strptime('2019-11-24 00:01:00', "%Y-%m-%d %H:%M:%S")
         for row_data in result:
             return row_data[0]
-        conn.close()
     except Exception as ex:
         await save_log("function mysql_get_time_data", busnumber, ex)
         print("mysql_get_time_data ", ex);
         pass
 
 
-async def mysql_search_data(busnumber,stationnumber):
+async def mysql_search_data(busnumber,stationnumber,conn):
     try:
-        conn = pymysql.connect(host='bus-live.canb61sq58tb.ap-northeast-2.rds.amazonaws.com', user='admin', password='wowns0034', db='bus-live', charset='utf8')
         curs = conn.cursor()
-        sql = """SELECT B.BUS_IS FROM (SELECT MAX(INDEX_NUM) AS MAX_NUM FROM BUS_LIVE WHERE BUS_ID=%s AND STATION_ID=%s) AS A, BUS_LIVE AS B WHERE BUS_ID=%s AND STATION_ID=%s AND B.INDEX_NUM=A.MAX_NUM"""
-        curs.execute(sql, (busnumber,stationnumber,busnumber,stationnumber))
+        sql = """SELECT BUS_IS FROM BUS_LIVE WHERE BUS_ID=%s AND STATION_ID=%s ORDER BY INDEX_NUM DESC LIMIT 1"""
+        curs.execute(sql, (busnumber,stationnumber))
         result = curs.fetchall()
         if len(result) == 0:
             return "N"
         for row_data in result:
             return row_data[0]
-        conn.close()
     except Exception as ex:
         await save_log("function mysql_search_data", busnumber, ex)
         print("mysql_search_data ", ex);
@@ -126,12 +119,13 @@ async def mysql_search_data(busnumber,stationnumber):
 
 #프로세스 시작--------------------------------------
 totalbuslist=buslist_file_load()
-index=0
+index=30000
+conn = pymysql.connect(host='bus-live.canb61sq58tb.ap-northeast-2.rds.amazonaws.com', user='admin',password='wowns0034', db='bus-live', charset='utf8')
 while(True):
     time.sleep(1)
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(totalbuslist,index))
+    loop.run_until_complete(main(totalbuslist,index,conn))
     index=index+1
+conn.close()
 loop.close()
-
 
