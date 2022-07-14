@@ -1,0 +1,2 @@
+[191123212108]7019정보를 DATABASE에 데이터를 저장하지 못하였습니다.
+[Errno 22] Invalid argument
